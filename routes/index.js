@@ -1,28 +1,23 @@
+// Source Article: https://www.freecodecamp.org/news/build-an-online-image-to-pdf-converter-with-html-css-js-nodejs/
+// GitHub Repo: https://github.com/Gidthecoder/img2pdf/
+
+// Run application using the following command:
+// set DEBUG=img2pdf:* & npm run devstart
+
 var express = require('express');
 var router = express.Router();
-var multer = require('multer');
 
-var fs = require('fs');
 var path = require('path');
+var multer = require('multer');
+var PDFDocument = require('pdfkit');
+var fs = require('fs');
 
-//create a '/' GET route that'll return the index.html file stored in the public/html folder
-router.get('/', function (req, res, next) {
-  //if there are no image filenames in a session, return the normal HTML page
-  if (req.session.imagefiles === undefined) {
-    res.sendFile(path.join(__dirname, '..', '/public/html/index.html'));
-  } else {
-    //if there are image filenames stored in a session, render them in an index.jade file
-    res.render('index', { images: req.session.imagefiles });
-  }
-});
+var { unlink } = require('fs/promises');
 
-//multer file storage configuration
 let storage = multer.diskStorage({
-  //store the images in the public/images folder
   destination: function (req, file, cb) {
     cb(null, 'public/images');
   },
-  //rename the images
   filename: function (req, file, cb) {
     cb(
       null,
@@ -31,10 +26,8 @@ let storage = multer.diskStorage({
   },
 });
 
-//configuration for file filter
 let fileFilter = (req, file, callback) => {
   let ext = path.extname(file.originalname);
-  //if the file extension isn't '.png' or '.jpg' return an error page else return true
   if (ext !== '.png' && ext !== '.jpg') {
     return callback(new Error('Only png and jpg files are accepted'));
   } else {
@@ -42,43 +35,46 @@ let fileFilter = (req, file, callback) => {
   }
 };
 
-//initialize Multer with the configurations for storage and file filter
 var upload = multer({ storage, fileFilter: fileFilter });
 
-router.post('/upload', upload.array('images'), function (req, res) {
-  let files = req.files;
-  let imgNames = [];
-
-  //extract the filenames
-  for (i of files) {
-    let index = Object.keys(i).findIndex(function (e) {
-      return e === 'filename';
-    });
-    imgNames.push(Object.values(i)[index]);
+/* GET home page. */
+router.get('/', function (req, res, next) {
+  if (req.session.imagefiles === undefined) {
+    res.sendFile(path.join(__dirname, '..', '/public/html/index.html'));
+  } else {
+    res.render('index', { images: req.session.imagefiles });
   }
-  //store the image filenames in a session
-  req.session.imagefiles = imgNames;
-
-  //redirect the request to the root URL route
-  res.redirect('/');
 });
 
-//import PDFkit
-var PDFDocument = require('pdfkit');
+router.post('/upload', upload.array('images'), function (req, res) {
+  if (req.files.length === 0) {
+    res.redirect('/');
+  } else {
+    let files = req.files;
+    let imgNames = [];
+    for (i of files) {
+      let index = Object.keys(i).findIndex(function (e) {
+        return e === 'filename';
+      });
+      imgNames.push(Object.values(i)[index]);
+    }
+    //store the addresses in a session
+    req.session.imagefiles = imgNames;
+
+    res.redirect('/');
+  }
+});
 
 router.post('/pdf', function (req, res, next) {
   let body = req.body;
-
-  //Create a new pdf
+  console.log(body);
   let doc = new PDFDocument({ size: 'A4', autoFirstPage: false });
   let pdfName = 'pdf-' + Date.now() + '.pdf';
 
-  //store the pdf in the public/pdf folder
   doc.pipe(
     fs.createWriteStream(path.join(__dirname, '..', `/public/pdf/${pdfName}`))
   );
 
-  //create the pdf pages and add the images
   for (let name of body) {
     doc.addPage();
     doc.image(path.join(__dirname, '..', `/public/images/${name}`), 20, 20, {
@@ -87,11 +83,24 @@ router.post('/pdf', function (req, res, next) {
       valign: 'center',
     });
   }
-  //end the process
+
   doc.end();
 
-  //send the address back to the browser
   res.send(`/pdf/${pdfName}`);
+});
+
+router.get('/new', function (req, res, next) {
+  //delete files
+  let filenames = req.session.imagefiles;
+  let deleteFiles = async (paths) => {
+    let deleting = paths.map((file) =>
+      unlink(path.join(__dirname, '..', `/public/images/${file}`))
+    );
+    await Promise.all(deleting);
+  };
+  deleteFiles(filenames);
+  req.session.imagefiles = undefined;
+  res.redirect('/');
 });
 
 module.exports = router;
