@@ -4,6 +4,9 @@
 // Run application using the following command:
 // set DEBUG=img2pdf:* & npm run devstart
 
+// Your package.json file is missing a build property inside the scripts property:
+// https://stackoverflow.com/questions/75676867/your-package-json-file-is-missing-a-build-property-inside-the-scripts-property
+
 var express = require('express');
 var router = express.Router();
 
